@@ -7,7 +7,7 @@ import './interfaces/IUniswapV2Pair.sol';
 import './interfaces/IUniswapV2Factory.sol';
 import './interfaces/IERC20.sol';
 
-contract TradeBot {
+contract UniswapTradeBot {
 	address public factory; // central hub of UniSwap ecosystem that provides info about liquidity pools
 	uint constant deadline = 10 days; // Date the trade is due
   	IUniswapV2Router02 public sushiRouter; // Central smart contract in the SushiSwap ecosystem that is used to trade in liquidity pools
@@ -20,6 +20,9 @@ contract TradeBot {
 		owner = msg.sender;
 	}
 
+	/*=============================================================================================================================================================================================
+	UNISWAP FLASHLOANS
+	=============================================================================================================================================================================================*/
 	/*
 		token0 - Token we will borrow (i.e. DAI)
 		token1 - Token we will trade token0 for (i.e. ETH)
@@ -78,6 +81,6 @@ contract TradeBot {
 	    // We borrowed DAI, exchanged the DAI for ETH in amountReceived, and return back ETH (as the swap...)
 	    IERC20 otherToken = IERC20(_amount0 == 0 ? token0 : token1); // (i.e. ETH)
 	    otherToken.transfer(msg.sender, amountRequired); // Reimburse Loan in ETH
-	    otherToken.transfer(tx.origin, amountReceived - amountRequired); // Keep Profit in ETH
+	    otherToken.transfer(owner, amountReceived - amountRequired); // Keep Profit in ETH
   	}
 }
