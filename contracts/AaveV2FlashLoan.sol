@@ -35,8 +35,9 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase {
 
         //
         // This contract now has the funds requested.
-        // Your logic goes here.
-        //
+        // Arbitrage
+        (string exchangeA, string exchangeB) = abi.decode(params, (string, string));
+        
         
         // At the end of your logic above, this contract owes
         // the flashloaned amounts + premiums.
@@ -50,11 +51,11 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase {
         }
 
         // Transfer profits to owner of the contract
-        
+        owner.transfer(RESIDUAL_PROFITS)
         return true;
     }
     
-    function myFlashLoanCall(address token0, address token1, uint _amount0, uint _amount1) public external{
+    function myFlashLoanCall(address token0, address token1, uint _amount0, uint _amount1, string exchangeA, string exchangeB) public external{
         address receiverAddress = address(this);
 
         address[] memory assets = new address[](2);
@@ -71,7 +72,8 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase {
         modes[1] = 0;
 
         address onBehalfOf = address(this);
-        bytes memory params = "";
+        // Encoding an address and a uint
+        bytes memory params = abi.encode(exchangeA, exchangeB);
         uint16 referralCode = 0;
 
         LENDING_POOL.flashLoan(
