@@ -4,6 +4,8 @@ import { FlashLoanReceiverBase } from "./interfaces/FlashLoanReceiverBase.sol";
 import { ILendingPool } from "./interfaces/ILendingPool.sol";
 import { ILendingPoolAddressesProvider } from "./interfaces/ILendingPoolAddressesProvider.sol";
 import { IERC20 } from "./interfaces/IERC20.sol";
+import './interfaces/IUniswapV2Router02.sol';
+import "@studydefi/money-legos/kyber/contracts/KyberNetworkProxy.sol";
 
 /** 
     !!!
@@ -12,6 +14,9 @@ import { IERC20 } from "./interfaces/IERC20.sol";
     !!!
  */
 contract AaveV2FlashLoan is FlashLoanReceiverBase {
+    IUniswapV2Router02 public sushiRouter;
+    KyberNetworkProxyRouter public kyberRouter;
+    uint constant deadline = 10 days; // Date the trade is due
 
     address payable owner;
     constructor() public {
@@ -35,10 +40,29 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase {
 
         //
         // This contract now has the funds requested.
-        // Arbitrage
-        (string exchangeA, string exchangeB) = abi.decode(params, (string, string));
+        // Arbitrage Example: Borrow DAI on Uni -> Exchange DAI for ETH on Sushi -> Sell ETH for DAI on Uni
+        (string memory exchangeA, string memory exchangeB, address exchangeAddressA, address exchangeAddressB) = abi.decode(params, (string, string));
+        setExchangeRouterFor(exchangeA, exchangeAddressA);
+        setExchangeRouterFor(exchangeB, exchangeAddressB);
         
-        
+        // Exchange Asset0 for Asset1 (i.e. Sell DAI to Buy ETH; like ETH could be 1000 DAI here)
+        if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("sushi"))) {
+            // Run swap for asset[1] with SushiSwap
+            uint asset1Received = sushiRouter.swapExactTokensForTokens(amount[0], amounts[1], assets, address(this), deadline)[1]; // Get Asset1 (i.e. ETH) in return
+        } else if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("kyber"))) {
+            // Run swap for asset[1] with Kyber
+            uint asset1Received = kyberRouter.swapTokenToToken(IERC20(assets[0]), amount[0], IERC20(assets[1]), amount[1]);
+        }
+
+        // Exchange Asset1 for Asset0 (i.e. Sell ETH for DAI here; like ETH could be 1010 DAI here)
+        if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("sushi"))) {
+            // Run swap for asset[0] with SushiSwap
+            uint asset0Received = sushiRouter.swapExactTokensForTokens(amount[1], amounts[0], assets, address(this), deadline)[0]; // Get Asset0 (i.e. DAI) in return
+        } else if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("kyber"))) {
+            // Run swap for asset[0] with Kyber
+            uint asset0Received = kyberRouter.swapTokenToToken(IERC20(assets[1]), amount[1], IERC20(assets[0]), amount[0]);
+        }
+
         // At the end of your logic above, this contract owes
         // the flashloaned amounts + premiums.
         // Therefore ensure your contract has enough to repay
@@ -51,8 +75,16 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase {
         }
 
         // Transfer profits to owner of the contract
-        owner.transfer(RESIDUAL_PROFITS)
+        owner.transfer(RESIDUAL_PROFITS);
         return true;
+    }
+
+    function setExchangeRouterFor(string memory exchange, address exchangeAddress) internal pure {
+        if (keccak256(abi.encodePacked(exchange)) == keccak256(abi.encodePacked("sushi"))) {
+            sushiRouter = IUniswapV2Router02(exchangeAddress);
+        } else if (keccak256(abi.encodePacked(exchange)) == keccak256(abi.encodePacked("kyber"))) {
+            kyberRouter = KyberNetworkProxy(exchangeAddress);
+        }
     }
     
     function myFlashLoanCall(address token0, address token1, uint _amount0, uint _amount1, string exchangeA, string exchangeB) public external{
@@ -73,7 +105,7 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase {
 
         address onBehalfOf = address(this);
         // Encoding an address and a uint
-        bytes memory params = abi.encode(exchangeA, exchangeB);
+        bytes memory params = abi.encode(exchangeA, exchangeB, exchangeAddressA, exchangeAddressB);
         uint16 referralCode = 0;
 
         LENDING_POOL.flashLoan(

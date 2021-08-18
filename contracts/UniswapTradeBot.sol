@@ -16,7 +16,7 @@ contract UniswapTradeBot {
 
 	constructor(address _factory, address _sushiRouter) public {
 		factory = _factory;
-		sushiRouter = IUniswapV2Router02(_sushiRouter)
+		sushiRouter = IUniswapV2Router02(_sushiRouter);
 		owner = msg.sender;
 	}
 
