@@ -2,10 +2,10 @@ pragma solidity ^0.6.6;
 pragma experimental ABIEncoderV2;
 
 import './UniswapV2Library.sol';
-import './interfaces/IUniswapV2Router02.sol';
-import './interfaces/IUniswapV2Pair.sol';
-import './interfaces/IUniswapV2Factory.sol';
-import './interfaces/IERC20.sol';
+import '../interfaces/IUniswapV2Router02.sol';
+import '../interfaces/IUniswapV2Pair.sol';
+import '../interfaces/IUniswapV2Factory.sol';
+import '../interfaces/IERC20.sol';
 
 contract UniswapTradeBot {
 	address public factory; // central hub of UniSwap ecosystem that provides info about liquidity pools
@@ -81,6 +81,23 @@ contract UniswapTradeBot {
 	    // We borrowed DAI, exchanged the DAI for ETH in amountReceived, and return back ETH (as the swap...)
 	    IERC20 otherToken = IERC20(_amount0 == 0 ? token0 : token1); // (i.e. ETH)
 	    otherToken.transfer(msg.sender, amountRequired); // Reimburse Loan in ETH
-	    otherToken.transfer(owner, amountReceived - amountRequired); // Keep Profit in ETH
+	    otherToken.transfer(_sender, amountReceived - amountRequired); // Keep Profit in ETH
   	}
+
+  	function withdrawToken(address _tokenContract, uint256 _amount) external {
+  		require(msg.sender == owner, "Unauthorized");
+        IERC20 tokenContract = IERC20(_tokenContract);
+        
+        // transfer the token from address of this contract
+        // to address of the user (executing the withdrawToken() function)
+        uint256 balance = IERC20(_tokenContract).balanceOf(address(this));
+        IERC20(_tokenAddress).transfer(owner, balance);
+    }
+     // KEEP THIS FUNCTION IN CASE THE CONTRACT KEEPS LEFTOVER ETHER!
+    function withdrawEther() {
+    	require(msg.sender == owner, "Unauthorized");
+        address self = address(this); // workaround for a possible solidity bug
+        uint256 balance = self.balance;
+        address(owner).transfer(balance);
+    }
 }
