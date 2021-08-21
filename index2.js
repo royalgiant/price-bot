@@ -1,3 +1,6 @@
+import AaveV2FlashLoan from './build/contracts/AaveV2FlashLoan.json'
+import UniswapTradeBot from './build/contracts/UniswapTradeBot.json'
+
 require('dotenv').config()
 
 //http dependencies
@@ -34,10 +37,18 @@ const server = http.createServer(app).listen(PORT, () => console.log(`Listening 
 
 // Web3 CONFIG
 const web3 = new Web3(process.env.RPC_URL)
+const accounts = await web3.eth.getAccounts()
 
 // Contracts
 const uniswapV2 = new web3.eth.Contract(legos.uniswapV2.router02.abi, legos.uniswapV2.router02.address)
 const kyber = new web3.eth.Contract(legos.kyber.network.abi, legos.kyber.network.address)
+const networkId = await web3.eth.net.getId()
+const AaveV2FlashLoanNetworkData = AaveV2FlashLoan.networks[networkId]
+const UniswapTradeBotNetworkData = UniswapTradeBot.networks[networkId]
+if(AaveV2FlashLoanNetworkData && UniswapTradeBotNetworkData) {
+  const aavev2FlashLoan = new web3.eth.Contract(AaveV2FlashLoan.abi, AaveV2FlashLoanNetworkData.address)
+  const uniswapTradeBot = new web3.eth.Contract(UniswapTradeBot.abi, UniswapTradeBotNetworkData.address)
+}
 
 async function checkPair(args) {
   const { inputTokenSymbol, inputTokenAddress, outputTokenSymbol, outputTokenAddress, inputAmount } = args
@@ -84,10 +95,12 @@ let monitoringPrice = false
 function comparePrices(exchangePriceA, exchangePriceB, response) {
   // ExchangePriceB is greater than ExchangePriceA; buy from ExchangePriceA and sell on ExchangePriceB
   if (exchangePriceA < exchangePriceB) { 
-    // tradeBot.methods.performArbitrage
+    // aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeA, exchangeB).call({from: accounts[0]})
+    // uniswapTradeBot.methods.startArbitrage(token0, token1, amount0, amount1).call({from: accounts[0]})
     console.log("exchangePriceA < exchangePriceB. Buying from A and Selling on B")
   } else if(exchangePriceA > exchangePriceB) { // ExchangePriceA price is greater than ExchangePriceB; buy from ExchangePriceB and sell on ExchangePriceA
-    // tradeBot.methods.performArbitrage
+    // aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeA, exchangeB).call({from: accounts[0]})
+    // uniswapTradeBot.methods.startArbitrage(token0, token1, amount0, amount1).call({from: accounts[0]})
     console.log("exchangePriceA > exchangePriceB. Buying from B and Selling on A")
   }
   csvWriter.writeRecords(response).then(() => { console.log('Written to excel file.');});

@@ -84,20 +84,19 @@ contract UniswapTradeBot {
 	    otherToken.transfer(_sender, amountReceived - amountRequired); // Keep Profit in ETH
   	}
 
-  	function withdrawToken(address _tokenContract, uint256 _amount) external {
+  	function withdrawToken(address _tokenContract) public {
   		require(msg.sender == owner, "Unauthorized");
-        IERC20 tokenContract = IERC20(_tokenContract);
         
         // transfer the token from address of this contract
         // to address of the user (executing the withdrawToken() function)
         uint256 balance = IERC20(_tokenContract).balanceOf(address(this));
-        IERC20(_tokenAddress).transfer(owner, balance);
+        IERC20(_tokenContract).transfer(owner, balance);
     }
      // KEEP THIS FUNCTION IN CASE THE CONTRACT KEEPS LEFTOVER ETHER!
-    function withdrawEther() {
+    function withdrawEther() public {
     	require(msg.sender == owner, "Unauthorized");
         address self = address(this); // workaround for a possible solidity bug
         uint256 balance = self.balance;
-        address(owner).transfer(balance);
+        owner.transfer(balance);
     }
 }
