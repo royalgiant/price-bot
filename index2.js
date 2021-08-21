@@ -81,7 +81,7 @@ async function checkPair(args) {
 let priceMonitor
 let monitoringPrice = false
 
-function comparePrices(exchangePriceA, exchangePriceB) {
+function comparePrices(exchangePriceA, exchangePriceB, response) {
   // ExchangePriceB is greater than ExchangePriceA; buy from ExchangePriceA and sell on ExchangePriceB
   if (exchangePriceA < exchangePriceB) { 
     // tradeBot.methods.performArbitrage
@@ -90,6 +90,7 @@ function comparePrices(exchangePriceA, exchangePriceB) {
     // tradeBot.methods.performArbitrage
     console.log("exchangePriceA > exchangePriceB. Buying from B and Selling on A")
   }
+  csvWriter.writeRecords(response).then(() => { console.log('Written to excel file.');});
 }
 
 async function monitorPrice() {
@@ -113,9 +114,7 @@ async function monitorPrice() {
       outputTokenAddress: legos.erc20.bat.address,
       inputAmount: web3.utils.toWei('1', 'ETHER')
     }).then(function(response) {
-      row = response[0]
-      comparePrices(row["uniswapreturn"], row["kyberexpectedreturn"])
-      csvWriter.writeRecords(response).then(() => { console.log('Written to excel file.');});
+      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response)
     })
 
     await checkPair({
@@ -125,9 +124,7 @@ async function monitorPrice() {
       outputTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f',
       inputAmount: web3.utils.toWei('1', 'ETHER')
     }).then(function(response) {
-      row = response[0]
-      comparePrices(row["uniswapreturn"], row["kyberexpectedreturn"])
-      csvWriter.writeRecords(response).then(() => { console.log('Written to excel file.');});
+      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response)
     })
 
     await checkPair({
@@ -137,9 +134,7 @@ async function monitorPrice() {
       outputTokenAddress: '0xdd974d5c2e2928dea5f71b9825b8b646686bd200',
       inputAmount: web3.utils.toWei('1', 'ETHER')
     }).then(function(response) {
-      row = response[0]
-      comparePrices(row["uniswapreturn"], row["kyberexpectedreturn"])
-      csvWriter.writeRecords(response).then(() => { console.log('Written to excel file.');});
+      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response)
     })
 
     await checkPair({
@@ -149,9 +144,7 @@ async function monitorPrice() {
       outputTokenAddress: '0x514910771af9ca656af840dff83e8264ecf986ca',
       inputAmount: web3.utils.toWei('1', 'ETHER')
     }).then(function(response) {
-      row = response[0]
-      comparePrices(row["uniswapreturn"], row["kyberexpectedreturn"])
-      csvWriter.writeRecords(response).then(() => { console.log('Written to excel file.');});
+      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response)
     })
 
   } catch (error) {
