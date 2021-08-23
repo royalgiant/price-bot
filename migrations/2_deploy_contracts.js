@@ -15,7 +15,6 @@ module.exports = function(deployer, network, accounts) {
     try {
 
         let lendingPoolAddressesProviderAddress;
-
         switch(network) {
             case "mainnet":
             	lendingPoolAddressesProviderAddress = "0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5"; break
@@ -24,6 +23,7 @@ module.exports = function(deployer, network, accounts) {
             case "development": // For Ganache mainnet forks
                 lendingPoolAddressesProviderAddress = "0x24a42fD28C976A61Df5D00D0599C34c4f90748c8"; break
             case "ropsten":
+            	lendingPoolAddressesProviderAddress = "0x1c8756FD2B28e9426CDBDcC7E3c4d64fa9A54728"; break
             case "ropsten-fork":
                 lendingPoolAddressesProviderAddress = "0x1c8756FD2B28e9426CDBDcC7E3c4d64fa9A54728"; break
             case "kovan":
@@ -31,7 +31,7 @@ module.exports = function(deployer, network, accounts) {
             case "kovan-fork":
                 lendingPoolAddressesProviderAddress = "0x88757f2f99175387ab4c6a4b3067c77a695b0349"; break
             default:
-                throw Error(`Are you deploying to the correct network? (network selected: ${network})`)
+                lendingPoolAddressesProviderAddress = "0x24a42fD28C976A61Df5D00D0599C34c4f90748c8"; break
         }
 
         deployer.deploy(
@@ -39,6 +39,7 @@ module.exports = function(deployer, network, accounts) {
 	  		'0x9aab3f75489902f3a48495025729a0af77d4b11e', //Kyber Network Proxy; Proxy1 Address: 0x818E6FECD516Ecc3849DAf6845e3EC868087B755
 	  		'0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F', //Sushiswap router
 	  		lendingPoolAddressesProviderAddress, // Aave Lending Pool Addresses MAINNET, for other addresses: https://docs.aave.com/developers/deployed-contracts/deployed-contracts
+	  		{ from: accounts[0], overwrite: true }
 	  	);
     } catch (e) {
         console.log(`Error in migration: ${e.message}`)

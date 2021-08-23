@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.6.6;
 pragma experimental ABIEncoderV2;
 
@@ -5,7 +6,7 @@ import './UniswapV2Library.sol';
 import '../interfaces/IUniswapV2Router02.sol';
 import '../interfaces/IUniswapV2Pair.sol';
 import '../interfaces/IUniswapV2Factory.sol';
-import '../interfaces/IERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
 contract UniswapTradeBot {
 	address public factory; // central hub of UniSwap ecosystem that provides info about liquidity pools

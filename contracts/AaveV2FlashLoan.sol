@@ -1,10 +1,12 @@
 pragma solidity ^0.6.6;
+// SPDX-License-Identifier: MIT
 
 import { FlashLoanReceiverBase } from "../interfaces/FlashLoanReceiverBase.sol";
 import { ILendingPool } from "../interfaces/ILendingPool.sol";
 import { ILendingPoolAddressesProvider } from "../interfaces/ILendingPoolAddressesProvider.sol";
-import { IERC20 } from "../interfaces/IERC20.sol";
+import { IERC20 } from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '../interfaces/IUniswapV2Router02.sol';
+import "./Withdrawable.sol";
 
 // Kyber Mainnet Address: 0x9aab3f75489902f3a48495025729a0af77d4b11e
 interface KyberNetworkProxy {
@@ -16,17 +18,13 @@ interface KyberNetworkProxy {
     exposed to a 'griefing' attack, where the stored funds are used by an attacker.
     !!!
  */
-contract AaveV2FlashLoan is FlashLoanReceiverBase {
+contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
     IUniswapV2Router02 public sushiRouter;
     KyberNetworkProxy public kyberRouter;
     uint private asset0Received;
     uint constant deadline = 10 days; // Date the trade is due
-    ILendingPoolAddressesProvider provider;
 
-    address payable owner;
-    constructor(address _kyberRouter, address _sushiRouter) FlashLoanReceiverBase(provider) public {
-        owner = msg.sender;
-        provider = ILendingPoolAddressesProvider(provider);
+    constructor(address _kyberRouter, address _sushiRouter, address provider) public FlashLoanReceiverBase(provider) {
         kyberRouter = KyberNetworkProxy(_kyberRouter);
         sushiRouter = IUniswapV2Router02(_sushiRouter);
     }
@@ -82,12 +80,6 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase {
             IERC20(assets[i]).approve(address(LENDING_POOL), amountOwing);
         }
 
-        // Transfer profits to owner of the contract
-        for (uint i = 0; i < amounts.length; i++) {
-            if (amounts[i] > 0) {
-                owner.transfer(amounts[i]);
-            }
-        }
         return true;
     }
     
@@ -121,22 +113,5 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase {
             params,
             referralCode
         );
-    }
-
-    function withdrawToken(address _tokenContract, uint256 _amount) external {
-        require(msg.sender == owner, "Unauthorized");
-        IERC20 tokenContract = IERC20(_tokenContract);
-        
-        // transfer the token from address of this contract
-        // to address of the user (executing the withdrawToken() function)
-        uint256 balance = IERC20(_tokenContract).balanceOf(address(this));
-        IERC20(_tokenAddress).transfer(owner, balance);
-    }
-     // KEEP THIS FUNCTION IN CASE THE CONTRACT KEEPS LEFTOVER ETHER!
-    function withdrawEther() {
-        require(msg.sender == owner, "Unauthorized");
-        address self = address(this); // workaround for a possible solidity bug
-        uint256 balance = self.balance;
-        address(owner).transfer(balance);
     }
 }
