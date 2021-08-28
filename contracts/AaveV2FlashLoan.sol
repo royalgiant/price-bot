@@ -49,19 +49,19 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
         // Arbitrage Example: Borrow DAI on Uni -> Exchange DAI for ETH on Sushi -> Sell ETH for DAI on Uni
         (string memory exchangeA, string memory exchangeB) = abi.decode(params, (string, string));
         
-        // Exchange Asset0 for Asset1 (i.e. Sell DAI to Buy ETH; like ETH could be 1000 DAI here)
+        // Exchange Asset0 for Asset1 on Exchange A (i.e. Sell Borrowed WETH to Buy DAI; like WETH could be 3000 DAI here)
         if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("sushi"))) {
             // Run swap for asset[1] with SushiSwap
-            sushiRouter.swapExactTokensForTokens(amounts[0], amounts[1], assets, address(this), deadline)[1]; // Get Asset1 (i.e. ETH) in return
+            sushiRouter.swapExactTokensForTokens(amounts[0], amounts[1], assets, address(this), deadline)[1]; // Get Asset1 (i.e. DAI) in return
         } else if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("kyber"))) {
             // Run swap for asset[1] with Kyber
             kyberRouter.swapTokenToToken(IERC20(assets[0]), amounts[0], IERC20(assets[1]), amounts[1]);
         }
        
-        // Exchange Asset1 for Asset0 (i.e. Sell ETH for DAI here; like ETH could be 1010 DAI here)
+        // Exchange Asset1 for Asset0 on Exchange B (i.e. Sell DAI for WETH here; like WETH could be 2900 DAI here)
         if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("sushi"))) {
             // Run swap for asset[0] with SushiSwap
-            asset0Received = sushiRouter.swapExactTokensForTokens(amounts[1], amounts[0], assets, address(this), deadline)[0]; // Get Asset0 (i.e. DAI) in return
+            asset0Received = sushiRouter.swapExactTokensForTokens(amounts[1], amounts[0], assets, address(this), deadline)[0]; // Get Asset0 (i.e. WETH) in return
         } else if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("kyber"))) {
             // Run swap for asset[0] with Kyber
             asset0Received = kyberRouter.swapTokenToToken(IERC20(assets[1]), amounts[1], IERC20(assets[0]), amounts[0]);
