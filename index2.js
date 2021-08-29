@@ -19,6 +19,8 @@ const csvWriter = createCsvWriter({
     header: [
         {id: 'inputtoken', title: 'Input Token'},
         {id: 'outputtoken', title: 'Output Token'},
+        {id: 'inputTokenAddress', title: 'Input Token Address'},
+        {id: 'outputTokenAddress', title: 'Output Token Address'},
         {id: 'inputamount', title: 'Input Amount'},
         {id: 'uniswapreturn', title: 'Uniswap Return'},
         {id: 'kyberexpectedreturn', title: 'Kyber Expected Rate'},
@@ -38,8 +40,13 @@ const server = http.createServer(app).listen(PORT, () => console.log(`Listening 
 // Web3 CONFIG
 const web3 = new Web3(process.env.RPC_URL)
 
+// Exchanges
+UNISWAP = "uniswap"
+SUSHISWAP = "sushi"
+KYBER = "kyber"
+
 // Contracts
-const uniswapV2 = new web3.eth.Contract(legos.uniswapV2.router02.abi, legos.uniswapV2.router02.address)
+const uniswapV2 = new web3.eth.Contract(legos.uniswapV2.router02.abi, process.env.SUSHIV2_ROUTER_ADDRESS)
 const kyber = new web3.eth.Contract(legos.kyber.network.abi, legos.kyber.network.address)
 
 async function checkPair(args) {
@@ -63,6 +70,8 @@ async function checkPair(args) {
   console.table([{
     'Input Token': inputTokenSymbol,
     'Output Token': outputTokenSymbol,
+    'Input Token Address': inputTokenAddress,
+    'Output Token Address': outputTokenAddress,
     'Input Amount': input_amount,
     'Uniswap Return': uniswap_return,
     'Kyber Expected Rate': ker,
@@ -72,6 +81,8 @@ async function checkPair(args) {
   var new_record = [{
   inputtoken: inputTokenSymbol, 
   outputtoken: outputTokenSymbol, 
+  inputTokenAddress: inputTokenAddress,
+  outputTokenAddress: outputTokenAddress,
   inputamount: input_amount,
   uniswapreturn: uniswap_return, 
   kyberexpectedreturn: ker,
@@ -84,22 +95,28 @@ async function checkPair(args) {
 let priceMonitor
 let monitoringPrice = false
 
-function comparePrices(exchangePriceA, exchangePriceB, response) {
+function comparePrices(exchangePriceA, exchangePriceB, response, exchangeA, exchangeB) {
   // ExchangePriceB is greater than ExchangePriceA; buy from ExchangePriceA and sell on ExchangePriceB
+  token0 = response[0]["inputTokenAddress"]
+  token1 = response[0]["outputTokenAddress"]
+  amount0 = web3.utils.toWei(response[0]["inputamount"], 'Ether')
+
   if (exchangePriceA < exchangePriceB) { 
     const account = process.env.BOTACCOUNT_ADDRESS
     var aavev2FlashLoan = new web3.eth.Contract(AaveV2FlashLoan.abi, process.env.AAVE_CONTRACT_ADDRESS)
+    amount1 = web3.utils.toWei(response[0]["kyberexpectedreturn"], 'Ether') // Take the higher amount of the compared exchanges
     // var uniswapTradeBot = new web3.eth.Contract(UniswapTradeBot.abi, process.env.UNISWAP_CONTRACT_ADDRESS)
-    // aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeB, exchangeA).call({from: account}).then(console.log);
+    aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeB, exchangeA).call({from: account}).then(console.log);
     // uniswapTradeBot.methods.startArbitrage(token0, token1, amount0, amount1).call({from: account}).then(console.log); TODO: MAKE SURE EXCHANGES FOR SWAPPING ARE RIGHT
-    console.log("exchangePriceA < exchangePriceB. Buying from A and Selling on B")
+    console.log("exchangePriceA < exchangePriceB. Buying from B and Selling on A")
   } else if(exchangePriceA > exchangePriceB) { // ExchangePriceA price is greater than ExchangePriceB; buy from ExchangePriceB and sell on ExchangePriceA
     const account = process.env.BOTACCOUNT_ADDRESS
     var aavev2FlashLoan = new web3.eth.Contract(AaveV2FlashLoan.abi, process.env.AAVE_CONTRACT_ADDRESS)
+    amount1 = web3.utils.toWei(response[0]["uniswapreturn"], 'Ether')  // Take the higher amount of the compared exchanges
     // var uniswapTradeBot = new web3.eth.Contract(UniswapTradeBot.abi, process.env.UNISWAP_CONTRACT_ADDRESS)
-    // aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeA, exchangeB).call({from: account}).then(console.log);
+    aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeA, exchangeB).call({from: account}).then(console.log);
     // uniswapTradeBot.methods.startArbitrage(token0, token1, amount0, amount1).call({from: account}).then(console.log); TODO: MAKE SURE EXCHANGES FOR SWAPPING ARE RIGHT
-    console.log("exchangePriceA > exchangePriceB. Buying from B and Selling on A")
+    console.log("exchangePriceA > exchangePriceB. Buying from A and Selling on B")
   }
   // csvWriter.writeRecords(response).then(() => { console.log('Written to excel file.');});
 }
@@ -117,7 +134,6 @@ async function monitorPrice() {
     // ADD YOUR CUSTOM TOKEN PAIRS HERE!!!
     
     const WETH_ADDRESS = legos.erc20.weth.address; // Uniswap V2 uses wrapped eth
-  
     await checkPair({
       inputTokenSymbol: 'WETH',
       inputTokenAddress: WETH_ADDRESS,
@@ -125,7 +141,7 @@ async function monitorPrice() {
       outputTokenAddress: legos.erc20.bat.address,
       inputAmount: web3.utils.toWei('1', 'ETHER')
     }).then(function(response) {
-      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response)
+      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
     })
 
     await checkPair({
@@ -135,17 +151,17 @@ async function monitorPrice() {
       outputTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f',
       inputAmount: web3.utils.toWei('1', 'ETHER')
     }).then(function(response) {
-      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response)
+      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
     })
 
     await checkPair({
       inputTokenSymbol: 'WETH',
       inputTokenAddress: WETH_ADDRESS,
       outputTokenSymbol: 'KNC',
-      outputTokenAddress: '0xdd974d5c2e2928dea5f71b9825b8b646686bd200',
+      outputTokenAddress: '0xdeFA4e8a7bcBA345F687a2f1456F5Edd9CE97202',
       inputAmount: web3.utils.toWei('1', 'ETHER')
     }).then(function(response) {
-      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response)
+      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
     })
 
     await checkPair({
@@ -155,10 +171,10 @@ async function monitorPrice() {
       outputTokenAddress: '0x514910771af9ca656af840dff83e8264ecf986ca',
       inputAmount: web3.utils.toWei('1', 'ETHER')
     }).then(function(response) {
-      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response)
+      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
     })
 
-  } catch (error) {
+  } catch (error) { // If there's an error, we break out of the loop with clearInterval
     console.error(error)
     monitoringPrice = false
     clearInterval(priceMonitor)
