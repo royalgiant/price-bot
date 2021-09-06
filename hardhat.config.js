@@ -3,6 +3,7 @@
  */
 require("@nomiclabs/hardhat-truffle5");
 require("@nomiclabs/hardhat-ethers");
+require('hardhat-ethernal');
 require("dotenv").config()
 
 module.exports = {

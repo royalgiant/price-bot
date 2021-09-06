@@ -50,6 +50,8 @@ KYBER = "kyber"
 const uniswapV2 = new web3.eth.Contract(legos.uniswapV2.router02.abi, process.env.SUSHIV2_ROUTER_ADDRESS)
 const kyber = new web3.eth.Contract(legos.kyber.network.abi, legos.kyber.network.address)
 
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms)) // Sleeper after doing an arbitrage for X seconds (i.e. 30 for block time of ETH)
+
 async function checkPair(args) {
   const { inputTokenSymbol, inputTokenAddress, outputTokenSymbol, outputTokenAddress, inputAmount } = args
   
@@ -115,24 +117,24 @@ async function callFlashLoan(exchangeOne, exchangeTwo, response, amount1) {
     'to':  process.env.AAVE_CONTRACT_KOVAN_ADDRESS,
     'nonce': nonce,
     'gas': gasEstimate, 
-    'maxFeePerGas': 1000000108,
-    'data': aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeOne, exchangeTwo).send({from: accounts})
+    'maxFeePerGas': 194000000000,
+    'data': aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeOne, exchangeTwo).encodeABI()
   };
 
   // Sign the transaction
-    const signPromise = web3.eth.accounts.signTransaction(tx, process.env.KOVAN_TEST_ACCOUNT_PRIVATE_KEY);
-    signPromise.then((signedTx) => {
-      web3.eth.sendSignedTransaction(signedTx.rawTransaction, function(err, hash) {
-        if (!err) {
-          console.log("The hash of your transaction is: ", hash, "\n Check Alchemy's Mempool to view the status of your transaction!");
-        } else {
-          console.log("Something went wrong when submitting your transaction:", err)
-        }
-      });
-    }).catch((err) => {
-      console.log("Promise failed:", err);
+  const signPromise = web3.eth.accounts.signTransaction(tx, process.env.KOVAN_TEST_ACCOUNT_PRIVATE_KEY);
+  signPromise.then((signedTx) => {
+    web3.eth.sendSignedTransaction(signedTx.rawTransaction, function(err, hash) {
+      if (!err) {
+        console.log("The hash of your transaction is: ", hash, "\n Check Alchemy's Mempool to view the status of your transaction!");
+      } else {
+        console.log("Something went wrong when submitting your transaction:", err)
+      }
     });
-
+  }).catch((err) => {
+    console.log("Promise failed:", err);
+  });
+  await delay(30000)
 }
 
 function comparePrices(exchangePriceA, exchangePriceB, response, exchangeA, exchangeB) {
@@ -162,6 +164,12 @@ async function monitorPrice() {
     // ADD YOUR CUSTOM TOKEN PAIRS HERE!!!
     
     const WETH_ADDRESS = legos.erc20.weth.address; // Uniswap V2 uses wrapped eth
+    
+    // Kovan Level Pairs for Testing, Make Sure Tokens Exists in the Contract
+    var response = [{inputTokenAddress: process.env.WETH_KOVAN, outputTokenAddress: process.env.DAI_KOVAN, inputamount: "0.0001"}]
+    await callFlashLoan(SUSHISWAP, KYBER, response, 0)
+
+    // Production Level Pairs, Make Sure Tokens Exists in the Contract
     await checkPair({
       inputTokenSymbol: 'WETH',
       inputTokenAddress: WETH_ADDRESS,

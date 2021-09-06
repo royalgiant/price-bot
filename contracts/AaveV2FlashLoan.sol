@@ -7,6 +7,7 @@ import { ILendingPoolAddressesProvider } from "../interfaces/ILendingPoolAddress
 import { IERC20 } from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '../interfaces/IUniswapV2Router02.sol';
 import "./Withdrawable.sol";
+import "./NetworkFeesAndConfigs.sol";
 
 // Kyber Mainnet Address: 0x9aab3f75489902f3a48495025729a0af77d4b11e
 interface KyberNetworkProxy {
@@ -22,7 +23,7 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
     IUniswapV2Router02 public sushiRouter;
     KyberNetworkProxy public kyberRouter;
     uint private asset0Received;
-    uint constant deadline = 10 days; // Date the trade is due
+    mapping(string => uint) public amountsArray; 
 
     constructor(address _kyberRouter, address _sushiRouter, address provider) public FlashLoanReceiverBase(provider) {
         kyberRouter = KyberNetworkProxy(_kyberRouter);
@@ -43,37 +44,39 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
         override
         returns (bool)
     {
-
-        //
         // This contract now has the funds requested.
         // Arbitrage Example: Borrow DAI on Uni -> Exchange DAI for ETH on Sushi -> Sell ETH for DAI on Uni
         (string memory exchangeA, string memory exchangeB) = abi.decode(params, (string, string));
-        
-        // Exchange Asset0 for Asset1 on Exchange A (i.e. Sell Borrowed WETH to Buy DAI; like WETH could be 3000 DAI here)
+        amountsArray["fee"] = 0;
+        // Exchange Asset0 (Borrowed) for Asset1 on Exchange A (i.e. Sell Borrowed WETH to Buy DAI; like 1 WETH = 3000 DAI here)
         if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("sushi"))) {
             // Run swap for asset[1] with SushiSwap
-            sushiRouter.swapExactTokensForTokens(amounts[0], amounts[1], assets, address(this), deadline)[1]; // Get Asset1 (i.e. DAI) in return
+            sushiRouter.swapExactTokensForTokens(amounts[0], amounts[1], assets, address(this), NetworkFeesAndConfigs.getDeadline())[1]; // Get Asset1 (i.e. DAI) in return
+            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("sushi", amounts[0]));
         } else if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("kyber"))) {
             // Run swap for asset[1] with Kyber
             kyberRouter.swapTokenToToken(IERC20(assets[0]), amounts[0], IERC20(assets[1]), amounts[1]);
+            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("kyber", amounts[0]));
         }
        
-        // Exchange Asset1 for Asset0 on Exchange B (i.e. Sell DAI for WETH here; like WETH could be 2900 DAI here)
+        // Exchange Asset1 for Asset0 on Exchange B (i.e. Sell DAI for WETH here; like WETH could be 1500 DAI here, giving us back 2 WETH)
         if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("sushi"))) {
             // Run swap for asset[0] with SushiSwap
-            asset0Received = sushiRouter.swapExactTokensForTokens(amounts[1], amounts[0], assets, address(this), deadline)[0]; // Get Asset0 (i.e. WETH) in return
+            amountsArray["asset0Received"] = sushiRouter.swapExactTokensForTokens(amounts[1], amounts[0], assets, address(this), NetworkFeesAndConfigs.getDeadline())[0]; // Get Asset0 (i.e. WETH) in return
+            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("sushi", amountsArray["asset0Received"]));
         } else if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("kyber"))) {
             // Run swap for asset[0] with Kyber
-            asset0Received = kyberRouter.swapTokenToToken(IERC20(assets[1]), amounts[1], IERC20(assets[0]), amounts[0]);
+            amountsArray["asset0Received"] = kyberRouter.swapTokenToToken(IERC20(assets[1]), amounts[1], IERC20(assets[0]), amounts[0]);
+            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("kyber", amountsArray["asset0Received"]));
         } else {
-            asset0Received = 0; // Default, we should actually never get in here.
+            amountsArray["asset0Received"] = 0; // Default, we should actually never get in here.
         }
 
         // At the end of your logic above, this contract owes
         // the flashloaned amounts + premiums.
         // Therefore ensure your contract has enough to repay
         // these amounts.
-        require(asset0Received > amounts[0].add(premiums[0]), 'Failed arb.');
+        require(asset0Received > amounts[0].add(amountsArray["fee"]).add(premiums[0]), 'Failed arb.');
         // Approve the LendingPool contract allowance to *pull* the owed amount
         for (uint i = 0; i < assets.length; i++) {
             uint amountOwing = amounts[i].add(premiums[i]);
