@@ -39,7 +39,7 @@ const server = http.createServer(app).listen(PORT, () => console.log(`Listening 
 
 // Web3 CONFIG
 const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
-const web3 = createAlchemyWeb3(process.env.RPC_URL)
+const web3 = createAlchemyWeb3(process.env.ALCHEMY_RPC_URL)
 
 // Exchanges
 UNISWAP = "uniswap"
@@ -52,8 +52,17 @@ const kyber = new web3.eth.Contract(legos.kyber.network.abi, legos.kyber.network
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms)) // Sleeper after doing an arbitrage for X seconds (i.e. 30 for block time of ETH)
 
+function calcDstQty(srcQty, srcDecimals, dstDecimals, rate) {
+  const PRECISION = (10 ** 18);
+  if (dstDecimals >= srcDecimals) {
+    return (srcQty * rate * (10**(dstDecimals - srcDecimals))) / PRECISION;
+  } else {
+    return (srcQty * rate) / (PRECISION * (10**(srcDecimals - dstDecimals)));
+  }
+}
+
 async function checkPair(args) {
-  const { inputTokenSymbol, inputTokenAddress, outputTokenSymbol, outputTokenAddress, inputAmount } = args
+  const { inputTokenSymbol, inputTokenAddress, outputTokenSymbol, outputTokenAddress, inputAmount, inputTokenDecimals, outputTokenDecimals } = args
   
   // calculate uniswap amount
   const path = [inputTokenAddress, outputTokenAddress];
@@ -62,12 +71,12 @@ async function checkPair(args) {
   
   // calculate kyber amount
   const { expectedRate, slippageRate } = await kyber.methods.getExpectedRate(inputTokenAddress, outputTokenAddress, inputAmount).call();
-  const kyberExpectedAmount = expectedRate;
-  const kyberSlippageAmount = slippageRate;
+  const kyberExpectedAmount = calcDstQty(inputAmount, inputTokenDecimals, outputTokenDecimals, expectedRate) // Use Tokens that have 18 token decimals
+  const kyberSlippageAmount = calcDstQty(inputAmount, inputTokenDecimals, outputTokenDecimals, slippageRate) // Use Tokens that have 18 token decimals
   var input_amount = web3.utils.fromWei(inputAmount, 'Ether')
   var uniswap_return = web3.utils.fromWei(uniswapAmount, 'Ether')
-  var ker = web3.utils.fromWei(kyberExpectedAmount, 'Ether')
-  var kmr = web3.utils.fromWei(kyberSlippageAmount, 'Ether')
+  var ker = web3.utils.fromWei(String(kyberExpectedAmount), 'Ether')
+  var kmr = web3.utils.fromWei(String(kyberSlippageAmount), 'Ether')
   var now = moment().tz('America/Chicago').format()
 
   console.table([{
@@ -103,10 +112,10 @@ async function callFlashLoan(exchangeOne, exchangeTwo, response, amount1) {
   token1 = response[0]["outputTokenAddress"]
   amount0 = web3.utils.toWei(response[0]["inputamount"], 'Ether')
 
-  const account = process.env.KOVAN_TEST_ACCOUNT_ADDRESS
-  var aavev2FlashLoan = new web3.eth.Contract(AaveV2FlashLoan.abi, process.env.AAVE_CONTRACT_KOVAN_ADDRESS)
+  const account = process.env.BOTACCOUNT_ADDRESS
+  var aavev2FlashLoan = new web3.eth.Contract(AaveV2FlashLoan.abi, process.env.AAVE_CONTRACT_ADDRESS)
   // var uniswapTradeBot = new web3.eth.Contract(UniswapTradeBot.abi, process.env.UNISWAP_CONTRACT_ADDRESS)
-  var nonce = await web3.eth.getTransactionCount(process.env.KOVAN_TEST_ACCOUNT_ADDRESS, 'latest'); // get latest nonce
+  var nonce = await web3.eth.getTransactionCount(process.env.BOTACCOUNT_ADDRESS, 'latest'); // get latest nonce
   var gasEstimate = await aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeOne, exchangeTwo).estimateGas(); // estimate gas
   // const gasEstimate = await uniswapTradeBot.methods.startArbitrage(token0, token1, amount0, amount1).call({from: account}).call({from: account}).estimateGas(); // estimate gas TODO: MAKE SURE EXCHANGES FOR SWAPPING ARE RIGHT
   var gasPrice = await web3.eth.getGasPrice();
@@ -114,7 +123,7 @@ async function callFlashLoan(exchangeOne, exchangeTwo, response, amount1) {
   // Create the transaction
   const tx = {
     'from': account,
-    'to':  process.env.AAVE_CONTRACT_KOVAN_ADDRESS,
+    'to':  process.env.AAVE_CONTRACT_ADDRESS,
     'nonce': nonce,
     'gas': gasEstimate, 
     'maxFeePerGas': 194000000000,
@@ -122,7 +131,7 @@ async function callFlashLoan(exchangeOne, exchangeTwo, response, amount1) {
   };
 
   // Sign the transaction
-  const signPromise = web3.eth.accounts.signTransaction(tx, process.env.KOVAN_TEST_ACCOUNT_PRIVATE_KEY);
+  const signPromise = web3.eth.accounts.signTransaction(tx, process.env.BOTACCOUNT_PRIVATE_KEY);
   signPromise.then((signedTx) => {
     web3.eth.sendSignedTransaction(signedTx.rawTransaction, function(err, hash) {
       if (!err) {
@@ -170,22 +179,15 @@ async function monitorPrice() {
     await callFlashLoan(SUSHISWAP, KYBER, response, 0)
 
     // Production Level Pairs, Make Sure Tokens Exists in the Contract
-    await checkPair({
-      inputTokenSymbol: 'WETH',
-      inputTokenAddress: WETH_ADDRESS,
-      outputTokenSymbol: 'BAT',
-      outputTokenAddress: legos.erc20.bat.address,
-      inputAmount: web3.utils.toWei('0.0001', 'ETHER')
-    }).then(function(response) {
-      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
-    })
 
     await checkPair({
       inputTokenSymbol: 'WETH',
       inputTokenAddress: WETH_ADDRESS,
       outputTokenSymbol: 'DAI',
       outputTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f',
-      inputAmount: web3.utils.toWei('0.0001', 'ETHER')
+      inputAmount: web3.utils.toWei('0.0001', 'ETHER'),
+      inputTokenDecimals: 18,
+      outputTokenDecimals: 18
     }).then(function(response) {
       comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
     })
@@ -195,7 +197,9 @@ async function monitorPrice() {
       inputTokenAddress: WETH_ADDRESS,
       outputTokenSymbol: 'KNC',
       outputTokenAddress: '0xdeFA4e8a7bcBA345F687a2f1456F5Edd9CE97202',
-      inputAmount: web3.utils.toWei('0.0001', 'ETHER')
+      inputAmount: web3.utils.toWei('0.0001', 'ETHER'),
+      inputTokenDecimals: 18,
+      outputTokenDecimals: 18
     }).then(function(response) {
       comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
     })
@@ -205,7 +209,9 @@ async function monitorPrice() {
       inputTokenAddress: WETH_ADDRESS,
       outputTokenSymbol: 'LINK',
       outputTokenAddress: '0x514910771af9ca656af840dff83e8264ecf986ca',
-      inputAmount: web3.utils.toWei('0.0001', 'ETHER')
+      inputAmount: web3.utils.toWei('0.0001', 'ETHER'),
+      inputTokenDecimals: 18,
+      outputTokenDecimals: 18
     }).then(function(response) {
       comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
     })
