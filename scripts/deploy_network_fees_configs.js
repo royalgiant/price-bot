@@ -8,6 +8,11 @@ async function main() {
   const NetworkFeesAndConfigs = await ethers.getContractFactory("NetworkFeesAndConfigs");
   const network_fees_configs_contract = await NetworkFeesAndConfigs.deploy();
 
+  await hre.ethernal.push({
+    name: "NetworkFeesAndConfigs",
+    address: network_fees_configs_contract.address
+  });
+
   console.log("NetworkFeesAndConfigs Library Token address:", network_fees_configs_contract.address);
 }
 

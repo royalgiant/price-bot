@@ -46,6 +46,10 @@ UNISWAP = "uniswap"
 SUSHISWAP = "sushi"
 KYBER = "kyber"
 
+// Fees
+UNISWAP_FEE = SUSHISWAP_FEE = 0.30
+KYBER_FEE = 0.25
+
 // Contracts
 const uniswapV2 = new web3.eth.Contract(legos.uniswapV2.router02.abi, process.env.SUSHIV2_ROUTER_ADDRESS)
 const kyber = new web3.eth.Contract(legos.kyber.network.abi, legos.kyber.network.address)
@@ -146,16 +150,41 @@ async function callFlashLoan(exchangeOne, exchangeTwo, response, amount1) {
   await delay(30000)
 }
 
+// Swapping tokenB from exchangeA (lower price) to B (higher price) incurs fees. 
+// Simply, add those fees to tokenB's exchangePriceA and make sure exchangePriceB is still higher. Then we profit.
+function priceAndFees(exchangePriceA, exchangePriceB, exchangeA, exchangeB) {
+  var fee = 0.09; // Aave's Flash loan fee is always there.
+  if(exchangeA == KYBER) {
+    fee = fee + KYBER_FEE
+  } else if(exchangeA == UNISWAP || exchangeA == SUSHISWAP) {
+    fee = fee + UNISWAP_FEE // Uniswap and Sushiswap has the same fees.
+  }
+
+  if(exchangeB == KYBER) {
+    fee = fee + KYBER_FEE
+  } else if(exchangeB == UNISWAP || exchangeA == SUSHISWAP) {
+    fee = fee + UNISWAP_FEE // Uniswap and Sushiswap has the same fees.
+  }
+  fee_cost = exchangePriceA * fee
+  return exchangePriceA + fee_cost
+}
+
 function comparePrices(exchangePriceA, exchangePriceB, response, exchangeA, exchangeB) {
   // ExchangePriceB is greater than ExchangePriceA; buy from ExchangePriceA and sell on ExchangePriceB
   if (exchangePriceA < exchangePriceB) { 
     amount1 = web3.utils.toWei(response[0]["kyberexpectedreturn"], 'Ether') // Take the higher amount of the compared exchanges
-    callFlashLoan(exchangeB, exchangeA, response, amount1)
-    console.log("exchangePriceA < exchangePriceB. Buying from B and Selling on A")
+    exchangePriceAWithFees = priceAndFees(exchangePriceA, exchangePriceB, exchangeA, exchangeB)
+    if (exchangePriceAWithFees < exchangePriceB) {
+      callFlashLoan(exchangeB, exchangeA, response, amount1)
+      console.log("exchangePriceAWithFees: "+exchangePriceAWithFees+" < exchangePriceB: "+exchangePriceB+". Buying from B and Selling on A")
+    }
   } else if(exchangePriceA > exchangePriceB) { // ExchangePriceA price is greater than ExchangePriceB; buy from ExchangePriceB and sell on ExchangePriceA
     amount1 = web3.utils.toWei(response[0]["uniswapreturn"], 'Ether')  // Take the higher amount of the compared exchanges
-    callFlashLoan(exchangeA, exchangeB, response, amount1)
-    console.log("exchangePriceA > exchangePriceB. Buying from A and Selling on B")
+    exchangePriceBWithFees = priceAndFees(exchangePriceB, exchangePriceA, exchangeB, exchangeA)
+    if (exchangePriceA > exchangePriceBWithFees) {
+      callFlashLoan(exchangeA, exchangeB, response, amount1)
+      console.log("exchangePriceA: "+exchangePriceA+" > exchangePriceBWithFees: "+exchangePriceBWithFees+". Buying from A and Selling on B")
+    }
   }
   // csvWriter.writeRecords(response).then(() => { console.log('Written to excel file.');});
 }
