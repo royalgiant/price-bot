@@ -21,13 +21,15 @@ interface KyberNetworkProxy {
  */
 contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
     IUniswapV2Router02 public sushiRouter;
+    IUniswapV2Router02 public uniRouterV2;
     KyberNetworkProxy public kyberRouter;
     uint private asset0Received;
     mapping(string => uint) public amountsArray; 
 
-    constructor(address _kyberRouter, address _sushiRouter, address provider) public FlashLoanReceiverBase(provider) {
+    constructor(address _kyberRouter, address _sushiRouter, address _uniRouterV2, address provider) public FlashLoanReceiverBase(provider) {
         kyberRouter = KyberNetworkProxy(_kyberRouter);
         sushiRouter = IUniswapV2Router02(_sushiRouter);
+        uniRouterV2 = IUniswapV2Router02(_uniRouterV2);
     }
 
     /**
@@ -53,6 +55,10 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
             // Run swap for asset[1] with SushiSwap
             sushiRouter.swapExactTokensForTokens(amounts[0], amounts[1], assets, address(this), NetworkFeesAndConfigs.getDeadline())[1]; // Get Asset1 (i.e. DAI) in return
             amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("sushi", amounts[0]));
+        } else if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("uniswap"))) {
+            // Run swap for asset[1] with Uniswap
+            uniRouterV2.swapExactTokensForTokens(amounts[0], amounts[1], assets, address(this), NetworkFeesAndConfigs.getDeadline())[1]; // Get Asset1 (i.e. DAI) in return
+            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("uniswap", amounts[0]));
         } else if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("kyber"))) {
             // Run swap for asset[1] with Kyber
             kyberRouter.swapTokenToToken(IERC20(assets[0]), amounts[0], IERC20(assets[1]), amounts[1]);
@@ -64,6 +70,10 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
             // Run swap for asset[0] with SushiSwap
             amountsArray["asset0Received"] = sushiRouter.swapExactTokensForTokens(amounts[1], amounts[0], assets, address(this), NetworkFeesAndConfigs.getDeadline())[0]; // Get Asset0 (i.e. WETH) in return
             amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("sushi", amountsArray["asset0Received"]));
+        } else if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("uniswap"))) {
+            // Run swap for asset[0] with Uniswap
+            amountsArray["asset0Received"] = uniRouterV2.swapExactTokensForTokens(amounts[1], amounts[0], assets, address(this), NetworkFeesAndConfigs.getDeadline())[0]; // Get Asset0 (i.e. WETH) in return
+            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("uniswap", amountsArray["asset0Received"]));
         } else if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("kyber"))) {
             // Run swap for asset[0] with Kyber
             amountsArray["asset0Received"] = kyberRouter.swapTokenToToken(IERC20(assets[1]), amounts[1], IERC20(assets[0]), amounts[0]);
