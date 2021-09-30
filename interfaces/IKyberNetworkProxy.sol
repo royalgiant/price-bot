@@ -1,68 +1,25 @@
 pragma solidity 0.6.6;
 
-import "./IERC20.sol";
+import { IERC20 as ERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+interface KyberNetworkProxyInterface {
+    function maxGasPrice() external view returns(uint);
+    function getUserCapInWei(address user) external view returns(uint);
+    function getUserCapInTokenWei(address user, ERC20 token) external view returns(uint);
+    function enabled() external view returns(bool);
+    function info(bytes32 id) external view returns(uint);
 
-interface IKyberNetworkProxy {
+    function getExpectedRate(ERC20 src, ERC20 dest, uint srcQty) external view
+        returns (uint expectedRate, uint slippageRate);
 
-    event ExecuteTrade(
-        address indexed trader,
-        IERC20 src,
-        IERC20 dest,
-        address destAddress,
-        uint256 actualSrcAmount,
-        uint256 actualDestAmount,
-        address platformWallet,
-        uint256 platformFeeBps
-    );
-
-    /// @notice backward compatible
-    function tradeWithHint(
-        ERC20 src,
-        uint256 srcAmount,
-        ERC20 dest,
-        address payable destAddress,
-        uint256 maxDestAmount,
-        uint256 minConversionRate,
-        address payable walletId,
-        bytes calldata hint
-    ) external payable returns (uint256);
-
-    function tradeWithHintAndFee(
-        IERC20 src,
-        uint256 srcAmount,
-        IERC20 dest,
-        address payable destAddress,
-        uint256 maxDestAmount,
-        uint256 minConversionRate,
-        address payable platformWallet,
-        uint256 platformFeeBps,
-        bytes calldata hint
-    ) external payable returns (uint256 destAmount);
-
-    function trade(
-        IERC20 src,
-        uint256 srcAmount,
-        IERC20 dest,
-        address payable destAddress,
-        uint256 maxDestAmount,
-        uint256 minConversionRate,
-        address payable platformWallet
-    ) external payable returns (uint256);
-
-    /// @notice backward compatible
-    /// @notice Rate units (10 ** 18) => destQty (twei) / srcQty (twei) * 10 ** 18
-    function getExpectedRate(
-        ERC20 src,
-        ERC20 dest,
-        uint256 srcQty
-    ) external view returns (uint256 expectedRate, uint256 worstRate);
-
-    function getExpectedRateAfterFee(
-        IERC20 src,
-        IERC20 dest,
-        uint256 srcQty,
-        uint256 platformFeeBps,
-        bytes calldata hint
-    ) external view returns (uint256 expectedRate);
+    function tradeWithHint(ERC20 src, uint srcAmount, ERC20 dest, address destAddress, uint maxDestAmount,
+        uint minConversionRate, address walletId, bytes calldata hint) external payable returns(uint);
 }
+
+interface SimpleNetworkInterface {
+    function swapTokenToToken(ERC20 src, uint srcAmount, ERC20 dest, uint minConversionRate) external returns(uint);
+    function swapEtherToToken(ERC20 token, uint minConversionRate) external payable returns(uint);
+    function swapTokenToEther(ERC20 token, uint srcAmount, uint minConversionRate) external returns(uint);
+}
+
+abstract contract KyberNetworkProxy is KyberNetworkProxyInterface, SimpleNetworkInterface {}

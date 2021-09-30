@@ -4,16 +4,14 @@ pragma solidity ^0.6.6;
 import { FlashLoanReceiverBase } from "../interfaces/FlashLoanReceiverBase.sol";
 import { ILendingPool } from "../interfaces/ILendingPool.sol";
 import { ILendingPoolAddressesProvider } from "../interfaces/ILendingPoolAddressesProvider.sol";
+import {KyberNetworkProxy as IKyberNetworkProxy} from "../interfaces/IKyberNetworkProxy.sol";
 import { IERC20 } from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import '../interfaces/IUniswapV2Router02.sol';
 import "./Withdrawable.sol";
 import "./NetworkFeesAndConfigs.sol";
 import "hardhat/console.sol";
 
-// Kyber Mainnet Address: 0x9aab3f75489902f3a48495025729a0af77d4b11e
-interface KyberNetworkProxy {
-    function swapTokenToToken(IERC20 src, uint256 srcAmount, IERC20 dest, uint256 minConversionRate) external returns (uint256);
-}
 /** 
     !!!
     Never keep funds permanently on your FlashLoanReceiverBase contract as they could be 
@@ -21,14 +19,17 @@ interface KyberNetworkProxy {
     !!!
  */
 contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
+    using NetworkFeesAndConfigs for uint256;
+
     IUniswapV2Router02 public sushiRouter;
     IUniswapV2Router02 public uniRouterV2;
-    KyberNetworkProxy public kyberRouter;
+    IKyberNetworkProxy public kyberRouter;
     uint private asset0Received;
-    mapping(string => uint) public amountsArray; 
+    mapping(string => uint256) public amountsArray; 
+
 
     constructor(address _kyberRouter, address _sushiRouter, address _uniRouterV2, address provider) public FlashLoanReceiverBase(provider) {
-        kyberRouter = KyberNetworkProxy(_kyberRouter);
+        kyberRouter = IKyberNetworkProxy(_kyberRouter);
         sushiRouter = IUniswapV2Router02(_sushiRouter);
         uniRouterV2 = IUniswapV2Router02(_uniRouterV2);
     }
@@ -50,44 +51,49 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
         // This contract now has the funds requested.
         // Arbitrage Example: Borrow DAI on Uni -> Exchange DAI for ETH on Sushi -> Sell ETH for DAI on Uni
         (string memory exchangeA, string memory exchangeB) = abi.decode(params, (string, string));
+
         amountsArray["fee"] = 0;
         // Exchange Asset0 (Borrowed) for Asset1 on Exchange A (i.e. Sell Borrowed WETH to Buy DAI; like 1 WETH = 3000 DAI here)
         if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("sushi"))) {
             // Run swap for asset[1] with SushiSwap
-            sushiRouter.swapExactTokensForTokens(amounts[0], amounts[1], assets, address(this), NetworkFeesAndConfigs.getDeadline())[1]; // Get Asset1 (i.e. DAI) in return
-            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("sushi", amounts[0]));
+            swapOnSushi(IERC20(assets[0]).balanceOf(address(this)), assets, address(this), 1); // Get Asset1 (i.e. DAI) in return
+            amountsArray["fee"] = calculateNetworkFees(amountsArray["fee"], "sushi", amounts[0]);
         } else if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("uniswap"))) {
             // Run swap for asset[1] with Uniswap
-            uniRouterV2.swapExactTokensForTokens(amounts[0], amounts[1], assets, address(this), NetworkFeesAndConfigs.getDeadline())[1]; // Get Asset1 (i.e. DAI) in return
-            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("uniswap", amounts[0]));
+            swapOnUniswapV2(IERC20(assets[0]).balanceOf(address(this)), assets, address(this), 1); // Get Asset1 (i.e. DAI) in return
+            amountsArray["fee"] = calculateNetworkFees(amountsArray["fee"], "uniswap", amounts[0]);
         } else if(keccak256(abi.encodePacked(exchangeA)) == keccak256(abi.encodePacked("kyber"))) {
             // Run swap for asset[1] with Kyber
-            kyberRouter.swapTokenToToken(IERC20(assets[0]), amounts[0], IERC20(assets[1]), amounts[1]);
-            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("kyber", amounts[0]));
+            swapOnKyber(assets[0], amounts[0], assets[1]);
+            amountsArray["fee"] = calculateNetworkFees(amountsArray["fee"], "kyber", amounts[0]);
         }
-       
         // Exchange Asset1 for Asset0 on Exchange B (i.e. Sell DAI for WETH here; like WETH could be 1500 DAI here, giving us back 2 WETH)
         if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("sushi"))) {
             // Run swap for asset[0] with SushiSwap
-            amountsArray["asset0Received"] = sushiRouter.swapExactTokensForTokens(amounts[1], amounts[0], assets, address(this), NetworkFeesAndConfigs.getDeadline())[0]; // Get Asset0 (i.e. WETH) in return
-            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("sushi", amountsArray["asset0Received"]));
+            address[] memory path = new address[](2);
+            path[0] = assets[1];
+            path[1] = assets[0];
+            amountsArray["asset0Received"] = swapOnSushi(IERC20(assets[1]).balanceOf(address(this)), path, address(this), 1); // Get Asset0 (i.e. WETH) in return
+            amountsArray["fee"] = calculateNetworkFees(amountsArray["fee"], "sushi", amountsArray["asset0Received"]);
         } else if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("uniswap"))) {
             // Run swap for asset[0] with Uniswap
-            amountsArray["asset0Received"] = uniRouterV2.swapExactTokensForTokens(amounts[1], amounts[0], assets, address(this), NetworkFeesAndConfigs.getDeadline())[0]; // Get Asset0 (i.e. WETH) in return
-            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("uniswap", amountsArray["asset0Received"]));
+            address[] memory path = new address[](2);
+            path[0] = assets[1];
+            path[1] = assets[0];
+            amountsArray["asset0Received"] = swapOnUniswapV2(IERC20(assets[1]).balanceOf(address(this)), path, address(this), 1);
+            amountsArray["fee"] = calculateNetworkFees(amountsArray["fee"], "uniswap", amountsArray["asset0Received"]);
         } else if(keccak256(abi.encodePacked(exchangeB)) == keccak256(abi.encodePacked("kyber"))) {
             // Run swap for asset[0] with Kyber
-            amountsArray["asset0Received"] = kyberRouter.swapTokenToToken(IERC20(assets[1]), amounts[1], IERC20(assets[0]), amounts[0]);
-            amountsArray["fee"] = amountsArray["fee"].add(NetworkFeesAndConfigs.getNetworkFeeTotal("kyber", amountsArray["asset0Received"]));
+            amountsArray["asset0Received"] = swapOnKyber(assets[1], amounts[1], assets[0]);
+            amountsArray["fee"] = calculateNetworkFees(amountsArray["fee"], "kyber", amountsArray["asset0Received"]);
         } else {
             amountsArray["asset0Received"] = 0; // Default, we should actually never get in here.
         }
-
         // At the end of your logic above, this contract owes
         // the flashloaned amounts + premiums.
         // Therefore ensure your contract has enough to repay
         // these amounts.
-        require(asset0Received > amounts[0].add(amountsArray["fee"]).add(premiums[0]), 'Failed arb.');
+        require(amountsArray["asset0Received"] > amounts[0].add(amountsArray["fee"]).add(premiums[0]), 'Failed arb.');
         // Approve the LendingPool contract allowance to *pull* the owed amount
         for (uint i = 0; i < assets.length; i++) {
             uint amountOwing = amounts[i].add(premiums[i]);
@@ -96,7 +102,52 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
 
         return true;
     }
+
+   function getDeadline() internal returns (uint256){
+        return block.timestamp.getDeadline();
+    }
+
+    function calculateNetworkFees(uint256 current_fee_total, string memory network, uint256 amount) internal returns (uint256){
+        return current_fee_total.getNetworkFeeTotal(network, amount);
+    }
+
+    function swapOnKyber(address inputToken, uint256 amountIn, address outputToken) internal returns (uint256 amountOut) {
+        (uint256 expectedRate, ) = kyberRouter.getExpectedRate(IERC20(inputToken), IERC20(outputToken), amountIn);
+
+        TransferHelper.safeApprove(inputToken, address(kyberRouter), amountIn);
+        try kyberRouter.swapTokenToToken(IERC20(inputToken), amountIn, IERC20(outputToken), expectedRate) returns (uint256 _amountOut) {
+            return(_amountOut);
+        } catch Error(string memory reason) {
+            console.log(reason);
+        } catch {
+            revert("KE");
+        }
+    }
     
+    function swapOnUniswapV2(uint256 amountIn, address[] memory assets, address to, uint8 index) internal returns (uint256 amounts) {
+        uint256 amountOutMin = uniRouterV2.getAmountsOut(amountIn, assets)[index];
+        TransferHelper.safeApprove(assets[0], address(uniRouterV2), amountIn);
+        try uniRouterV2.swapExactTokensForTokens(amountIn, amountOutMin, assets, to, getDeadline()) returns (uint[] memory _amounts) {
+            return(_amounts[1]);
+        } catch Error(string memory reason) {
+            console.log(reason);
+        } catch {
+            revert("UE");
+        }
+    }
+
+    function swapOnSushi(uint256 amountIn, address[] memory assets, address to, uint8 index) internal returns (uint256 amounts) {
+        uint256 amountOutMin = sushiRouter.getAmountsOut(amountIn, assets)[index];
+        TransferHelper.safeApprove(assets[0], address(sushiRouter), amountIn);
+        try sushiRouter.swapExactTokensForTokens(amountIn, amountOutMin, assets, to, getDeadline()) returns (uint[] memory _amounts) {
+            return(_amounts[1]);
+        } catch Error(string memory reason) {
+            console.log(reason);
+        } catch {
+            revert("UE");
+        }
+    }
+
     function myFlashLoanCall(address token0, address token1, uint _amount0, uint _amount1, string memory exchangeA, string memory exchangeB) public {
         address receiverAddress = address(this);
 
