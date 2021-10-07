@@ -97,7 +97,7 @@ contract AaveV2FlashLoan is FlashLoanReceiverBase, Withdrawable {
         // Approve the LendingPool contract allowance to *pull* the owed amount
         for (uint i = 0; i < assets.length; i++) {
             uint amountOwing = amounts[i].add(premiums[i]);
-            IERC20(assets[i]).approve(address(LENDING_POOL), amountOwing);
+            TransferHelper.safeApprove(assets[i], address(LENDING_POOL), amountOwing);
         }
 
         return true;

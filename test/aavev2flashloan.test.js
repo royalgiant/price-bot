@@ -1,6 +1,10 @@
-const { run, network, ethers } = require("hardhat");
+const { run, network, ethers, waffle } = require("hardhat");
+const { deployContract, deployMockContract } = waffle;
 const { expect } = require("chai");
-const GenericERC20 = require('../build/contracts/GenericERC20.json');
+const IUniswapV2Router2 = require('../build/contracts/IUniswapV2Router02.json');
+const TransferHelper = require('../artifacts/@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol/TransferHelper.json')
+const AaveV2FlashLoanContract = require('../artifacts/contracts/AaveV2FlashLoan.sol/AaveV2FlashLoan.json');
+
 const { legos } = require('@studydefi/money-legos');
 
 const impersonateAddress = async (address) => {
@@ -41,7 +45,7 @@ describe("AaveV2FlashLoan", async () => {
 
 	const FUND_AMOUNT = 10000;
 	const ARB_AMOUNT = 100;
-
+	const SWAP_SUCCEED_AMOUNT = 103;
 
 	beforeEach(async () => {
 		[owner] = await ethers.getSigners();
@@ -93,15 +97,28 @@ describe("AaveV2FlashLoan", async () => {
 			expect(await aave_contract.owner()).to.equal(owner.address);
 		})
 
-		it("Should execute myFlashLoanCall", async function() {
-			const balance = await provider.getBalance(aave_contract.address);
-
-			const inputAmount = ethers.utils.parseEther(String(ARB_AMOUNT))
-			const tx = await aave_contract.myFlashLoanCall(dai, uni, inputAmount, 0, "kyber", "uniswap");
-			expect(tx.hash).to.be.not.null;
-
-			const receipt = await provider.getTransactionReceipt(tx.hash);
-			expect(receipt).to.be.not.null;
+		describe("Should execute myFlashLoanCall", async() => {
+			let mockUniswapV2Router;
+			let mock_aave_contract;
+			beforeEach(async () => {
+				const { provider } = waffle;
+				const [wallet] = provider.getWallets();
+				mockUniswapV2Router = await deployMockContract(wallet, IUniswapV2Router2.abi)
+				mock_aave_contract = await deployContract(wallet, AaveV2FlashLoanContract, [process.env.KYBER_NETWORK_PROXY_MAIN,process.env.SUSHIV2_ROUTER_ADDRESS, mockUniswapV2Router.address, process.env.AAVE_LENDING_POOL_ADDRESSES_PROVIDER])
+			})
+			it("And flash arb succeeds", async function() {
+				await mockUniswapV2Router.mock.getAmountsOut.returns([ethers.utils.parseEther(String(99)), ethers.utils.parseEther(String(SWAP_SUCCEED_AMOUNT))])
+				await mockUniswapV2Router.mock.swapExactTokensForTokens.returns([ethers.utils.parseEther(String(99)), ethers.utils.parseEther(String(SWAP_SUCCEED_AMOUNT))])
+				const inputAmount = ethers.utils.parseEther(String(ARB_AMOUNT))
+				try {
+					const tx = await mock_aave_contract.myFlashLoanCall(dai, uni, inputAmount, 0, "kyber", "uniswap");
+					expect(tx.hash).to.be.not.null;
+					const receipt = await provider.getTransactionReceipt(tx.hash);
+					expect(receipt).to.be.not.null;
+				} catch (e) {
+					console.log(e);
+				}
+			})
 		})
 	})
 })
