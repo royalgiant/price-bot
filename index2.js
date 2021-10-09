@@ -40,7 +40,7 @@ const server = http.createServer(app).listen(PORT, () => console.log(`Listening 
 
 // Web3 CONFIG
 const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
-const web3 = createAlchemyWeb3(process.env.ALCHEMY_RPC_URL)
+const web3 = createAlchemyWeb3(process.env.ALCHEMY_RPC_URL);
 
 // Exchanges
 UNISWAP = "uniswap"
@@ -72,15 +72,15 @@ async function checkPair(args) {
   
   // calculate uniswap amount
   const path = [inputTokenAddress, outputTokenAddress];
-  const amounts = await uniswapV2.methods.getAmountsOut(inputAmount, path).call();
+  const amounts = await uniswapV2.methods.getAmountsOut(inputAmount, path).call({}, process.env.BLOCK_NUMBER); // GET RID OF PARAMS IN CALL FOR MAINNET
   const uniswapAmount = amounts[1];
 
   // calculate sushiswap amount
-  const sushi_amounts = await sushiswapV2.methods.getAmountsOut(inputAmount, path).call();
+  const sushi_amounts = await sushiswapV2.methods.getAmountsOut(inputAmount, path).call({}, process.env.BLOCK_NUMBER); // GET RID OF PARAMS IN CALL FOR MAINNET
   const sushiAmount = sushi_amounts[1];
   
   // calculate kyber amount
-  const { expectedRate, slippageRate } = await kyber.methods.getExpectedRate(inputTokenAddress, outputTokenAddress, inputAmount).call();
+  const { expectedRate, slippageRate } = await kyber.methods.getExpectedRate(inputTokenAddress, outputTokenAddress, inputAmount).call({}, process.env.BLOCK_NUMBER); // GET RID OF PARAMS IN CALL FOR MAINNET
   const kyberExpectedAmount = calcDstQty(inputAmount, inputTokenDecimals, outputTokenDecimals, expectedRate) // Use Tokens that have 18 token decimals
   const kyberSlippageAmount = calcDstQty(inputAmount, inputTokenDecimals, outputTokenDecimals, slippageRate) // Use Tokens that have 18 token decimals
   var input_amount = web3.utils.fromWei(inputAmount, 'Ether')
@@ -218,17 +218,17 @@ async function monitorPrice() {
 
     // Production Level Pairs, Make Sure Tokens Exists in the Contract
 
-    await checkPair({
-      inputTokenSymbol: 'WETH',
-      inputTokenAddress: WETH_ADDRESS,
-      outputTokenSymbol: 'DAI',
-      outputTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f',
-      inputAmount: web3.utils.toWei('0.01', 'ETHER'),
-      inputTokenDecimals: 18,
-      outputTokenDecimals: 18
-    }).then(function(response) {
-      comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
-    })
+    // await checkPair({
+    //   inputTokenSymbol: 'WETH',
+    //   inputTokenAddress: WETH_ADDRESS,
+    //   outputTokenSymbol: 'DAI',
+    //   outputTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f',
+    //   inputAmount: web3.utils.toWei('0.01', 'ETHER'),
+    //   inputTokenDecimals: 18,
+    //   outputTokenDecimals: 18
+    // }).then(function(response) {
+    //   comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
+    // })
 
     await checkPair({
       inputTokenSymbol: 'WETH',
@@ -242,29 +242,29 @@ async function monitorPrice() {
       comparePrices(response[0]["uniswapreturn"], response[0]["kyberexpectedreturn"], response, SUSHISWAP, KYBER)
     })
 
-    await checkPair({
-      inputTokenSymbol: 'WETH',
-      inputTokenAddress: WETH_ADDRESS,
-      outputTokenSymbol: 'DAI',
-      outputTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f',
-      inputAmount: web3.utils.toWei('0.01', 'ETHER'),
-      inputTokenDecimals: 18,
-      outputTokenDecimals: 18
-    }).then(function(response) {
-      comparePrices(response[0]["uniswapreturn"], response[0]["sushiswapreturn"], response, UNISWAP, SUSHISWAP)
-    })
+    // await checkPair({
+    //   inputTokenSymbol: 'WETH',
+    //   inputTokenAddress: WETH_ADDRESS,
+    //   outputTokenSymbol: 'DAI',
+    //   outputTokenAddress: '0x6b175474e89094c44da98b954eedeac495271d0f',
+    //   inputAmount: web3.utils.toWei('0.01', 'ETHER'),
+    //   inputTokenDecimals: 18,
+    //   outputTokenDecimals: 18
+    // }).then(function(response) {
+    //   comparePrices(response[0]["uniswapreturn"], response[0]["sushiswapreturn"], response, UNISWAP, SUSHISWAP)
+    // })
 
-    await checkPair({
-      inputTokenSymbol: 'WETH',
-      inputTokenAddress: WETH_ADDRESS,
-      outputTokenSymbol: 'LINK',
-      outputTokenAddress: '0x514910771af9ca656af840dff83e8264ecf986ca',
-      inputAmount: web3.utils.toWei('0.01', 'ETHER'),
-      inputTokenDecimals: 18,
-      outputTokenDecimals: 18
-    }).then(function(response) {
-      comparePrices(response[0]["uniswapreturn"], response[0]["sushiswapreturn"], response, UNISWAP, SUSHISWAP)
-    })
+    // await checkPair({
+    //   inputTokenSymbol: 'WETH',
+    //   inputTokenAddress: WETH_ADDRESS,
+    //   outputTokenSymbol: 'LINK',
+    //   outputTokenAddress: '0x514910771af9ca656af840dff83e8264ecf986ca',
+    //   inputAmount: web3.utils.toWei('0.01', 'ETHER'),
+    //   inputTokenDecimals: 18,
+    //   outputTokenDecimals: 18
+    // }).then(function(response) {
+    //   comparePrices(response[0]["uniswapreturn"], response[0]["sushiswapreturn"], response, UNISWAP, SUSHISWAP)
+    // })
 
   } catch (error) { // If there's an error, we break out of the loop with clearInterval
     console.error(error)

@@ -5,11 +5,7 @@ async function main() {
 
   console.log("Account balance:", (await deployer.getBalance()).toString());
 
-  const AaveV2FlashLoan = await ethers.getContractFactory("AaveV2FlashLoan", {
-    libraries: {
-      NetworkFeesAndConfigs: process.env.NETWORKFEECONFIGS_CONTRACT_ADDRESS
-    }
-  });
+  const AaveV2FlashLoan = await ethers.getContractFactory("AaveV2FlashLoan");
   const aave_contract = await AaveV2FlashLoan.deploy(process.env.KYBER_NETWORK_PROXY_MAIN,process.env.SUSHIV2_ROUTER_ADDRESS, process.env.UNISWAPV2_ROUTER_ADDRESS, process.env.AAVE_LENDING_POOL_ADDRESSES_PROVIDER);
 
   await hre.ethernal.push({
