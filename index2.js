@@ -6,8 +6,8 @@ require('dotenv').config()
 //http dependencies
 const express = require('express')
 const bodyParser = require('body-parser')
+const hre = require("hardhat")
 const http = require('http')
-const Web3 = require('web3')
 const HDWalletProvider = require('@truffle/hdwallet-provider')
 const moment = require('moment-timezone')
 const numeral = require('numeral')
@@ -40,7 +40,7 @@ const server = http.createServer(app).listen(PORT, () => console.log(`Listening 
 
 // Web3 CONFIG
 const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
-const web3 = createAlchemyWeb3(process.env.ALCHEMY_RPC_URL);
+const web3 = createAlchemyWeb3(process.env.ALCHEMY_RPC_URL, {writeProvider: hre.network.provider});
 
 // Exchanges
 UNISWAP = "uniswap"
@@ -124,38 +124,9 @@ async function callFlashLoan(exchangeOne, exchangeTwo, response, amount1) {
   token0 = response[0]["inputTokenAddress"]
   token1 = response[0]["outputTokenAddress"]
   amount0 = web3.utils.toWei(response[0]["inputamount"], 'Ether')
-
-  const account = process.env.BOTACCOUNT_ADDRESS
   var aavev2FlashLoan = new web3.eth.Contract(AaveV2FlashLoan.abi, process.env.AAVE_CONTRACT_MAINFORK_ADDRESS)
-  // var uniswapTradeBot = new web3.eth.Contract(UniswapTradeBot.abi, process.env.UNISWAP_CONTRACT_ADDRESS)
-  var nonce = await web3.eth.getTransactionCount(process.env.BOTACCOUNT_ADDRESS, 'latest'); // get latest nonce
-  var gasEstimate = await aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeOne, exchangeTwo).estimateGas(); // estimate gas
-  // const gasEstimate = await uniswapTradeBot.methods.startArbitrage(token0, token1, amount0, amount1).call({from: account}).call({from: account}).estimateGas(); // estimate gas TODO: MAKE SURE EXCHANGES FOR SWAPPING ARE RIGHT
-  var gasPrice = await web3.eth.getGasPrice();
+  aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeOne, exchangeTwo).call({ from: process.env.BOTACCOUNT_ADDRESS}, process.env.BLOCK_NUMBER) // TAKE OUT THE BLOCK_NUMBER PARAM WHEN RUNNING LIVE
 
-  // Create the transaction
-  const tx = {
-    'from': account,
-    'to':  process.env.AAVE_CONTRACT_MAINFORK_ADDRESS,
-    'nonce': nonce,
-    'gas': gasEstimate, 
-    'maxFeePerGas': 194000000000,
-    'data': aavev2FlashLoan.methods.myFlashLoanCall(token0, token1, amount0, amount1, exchangeOne, exchangeTwo).encodeABI()
-  };
-
-  // Sign the transaction
-  const signPromise = web3.eth.accounts.signTransaction(tx, process.env.BOTACCOUNT_PRIVATE_KEY);
-  signPromise.then((signedTx) => {
-    web3.eth.sendSignedTransaction(signedTx.rawTransaction, function(err, hash) {
-      if (!err) {
-        console.log("The hash of your transaction is: ", hash, "\n Check Alchemy's Mempool to view the status of your transaction!");
-      } else {
-        console.log("Something went wrong when submitting your transaction:", err)
-      }
-    });
-  }).catch((err) => {
-    console.log("Promise failed:", err);
-  });
   await delay(30000)
 }
 
